@@ -1,0 +1,136 @@
+---
+title: "Practical Machine Learning - Project 1"
+author: "Sarabjeet Singh"
+date: "Friday, May 22, 2015"
+output: html_document
+---
+
+# Background 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement.
+The data sets used for this project are from website  
+http://groupware.les.inf.puc-rio.br/har 
+on Weight Lifting Exercises Dataset.
+
+Reference : 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions:   
+     
+* exactly according to the specification (Class A),   
+* throwing the elbows to the front (Class B),   
+* lifting the dumbbell only halfway (Class C),   
+* lowering the dumbbell only halfway (Class D)     
+* throwing the hips to the front (Class E).
+
+
+# Read the Data
+
+Downloaded the two .csv files on Training and Testing.
+
+```{r, echo=TRUE}
+train <- read.csv("pml-training.csv")
+test <- read.csv("pml-testing.csv")
+dim(train)
+dim(test)
+```
+
+training dataset has 19622 observations and 160 variables, 
+while the testing data set contains 20 observations and 160 variables.
+"classe" variable in the training set is the outcome to predict.
+
+# Clean the data
+We will clean the data and get rid of observations with missing values as well as some meaningless variables.
+
+```{r, echo = TRUE}
+# Clean data containing NA.
+train <- train[, colSums(is.na(train)) == 0]
+test <- test[, colSums(is.na(test)) == 0]
+# clean data from features not from the sensors
+trainC <- train[, grepl("X|user_name|timestamp|window|^max|^min|^ampl|^var|^avg|^stdd|^ske|^kurt", colnames(train)) == F]
+testC <- test[, grepl("X|user_name|timestamp|window|^max|^min|^ampl|^var|^avg|^stdd|^ske|^kurt", 
+    colnames(test)) == F]
+dim(trainC)
+dim(testC)
+```
+
+Now the cleaned data contains 53 variables down from 160 varaibles earlier
+
+# Slice the Data
+we can split the cleaned training set into a pure training data set (70%) and a validation data set (30%). We will use the validation data set to conduct cross validation in future steps.
+
+```{r, echo = TRUE}
+library(caret)
+set.seed(25000) # For reproducibile purpose
+inTrain <- createDataPartition(trainC$classe, p=0.70, list=F)
+trainX <- trainC[inTrain, ]
+validX <- trainC[-inTrain, ]
+```
+
+
+# Data Modeling
+We can use a predictive model for activity recognition using Random Forest algorithm.
+We can use 10-fold cross validation when applying the algorithm.
+
+```{r, echo = TRUE}
+
+library(randomForest)
+library(e1071)  # I found this error hence using this library : Error in requireNamespaceQuietStop("e1071") : package e1071 is required
+
+controlRf <- trainControl(method="cv", 10)
+modelRf <- train(classe ~ ., data=trainX, method="rf", trControl=controlRf, ntree=100, allowParallel=TRUE)
+modelRf
+```
+Then we predict this modeling on validation data set
+
+```{r, echo= TRUE }
+predictRf <- predict(modelRf, validX)
+confusionMatrix(validX$classe, predictRf)
+```
+Lets check Accuracy
+
+```{r, echo= TRUE }
+accuracy <- postResample(predictRf, validX$classe)
+accuracy
+```
+
+Accuracy of this prediction model is 99.18%.
+
+Out of Sample Error is calculated here
+
+```{r, echo= TRUE }
+error <- 1 - as.numeric(confusionMatrix(validX$classe, predictRf)$overall[1])
+error
+```
+
+Out of Sample Error is 0.82%.
+
+# Predicting for Test Data Set
+
+Now, we apply the model to the original testing data set downloaded from the data source. 
+Generate "problem_id_x.txt" Files for the assignments. These generated individual files are stored in working directory.
+
+
+```{r, echo= TRUE }
+Testpredict <- predict(modelRf, testC, type = "raw")
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(Testpredict)
+```
+
+Loaded these files as per Problem_id number into Project Assignment and obtained the correct results for all 20 cases.
+
+# Appendix : Tree Visualization
+
+```{r, echo= TRUE }
+library(rpart)
+library(rpart.plot)
+treeModel <- rpart(classe ~ ., data=trainX, method="class")
+prp(treeModel) # plot of Tree Model
+```
+
